@@ -1,7 +1,14 @@
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import numpy as np
-from colour import SpectralDistribution, XYZ_to_sRGB, sd_to_XYZ, sRGB_to_XYZ
+from colour import (
+    SpectralDistribution,
+    XYZ_to_sRGB,
+    sd_to_XYZ,
+    sRGB_to_XYZ,
+)
+from colour.difference import delta_E_CIE1976
+from colour.models import Lab_to_XYZ, XYZ_to_Lab
 from PIL import Image, ImageTk, ImageOps
 import os
 from scipy.optimize import minimize
@@ -12,14 +19,14 @@ class PaintMixingGame:
         master.title("Jogo de Mistura de Tintas a Óleo")
 
         # Carregar a textura de tinta padrão
-        texture_path = r"E:\PythonCodes\Projetos\ScriptForOilPainters\texture_oil\pngtree-textured-background-with-brush-stroke-of-gray-oil-paint-image_13659816.png"
+        texture_path = r"E:\PythonCodes\Projetos\ScriptForOilPainters\texture_oil\pngtree-textured-background-with-brush-stroke-of-gray-oil-paint-image_13659816.png"  # Altere para o caminho correto
         try:
             if not os.path.exists(texture_path):
                 raise FileNotFoundError("A imagem de textura não foi encontrada no caminho especificado.")
             self.texture_image = Image.open(texture_path).convert('RGBA')
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar a imagem de textura:\n{e}")
-            self.texture_image = None  # Defina como None ou uma imagem padrão
+            self.texture_image = None  # Defina como None para usar cor sólida
 
         self.texture_photo = None  # Para manter a referência da imagem
         self.saved_tones = []  # Armazena os tons criados
@@ -107,8 +114,6 @@ class PaintMixingGame:
         return sd
 
     def create_selection_interface(self):
-        self.clear_window()
-
         tk.Label(self.master, text="Selecione as tintas para sua paleta:").pack()
 
         self.paint_vars = {}
@@ -122,7 +127,12 @@ class PaintMixingGame:
         self.create_palette_button.pack(pady=10)
 
     def create_palette(self):
-        self.selected_paints = {paint: sd for paint, var in self.paint_vars.items() if var.get() == 1 for sd in [self.available_paints_spectral[paint]]}
+        self.selected_paints = {
+            paint: sd
+            for paint, var in self.paint_vars.items()
+            if var.get() == 1
+            for sd in [self.available_paints_spectral[paint]]
+        }
         if not self.selected_paints:
             messagebox.showwarning("Aviso", "Nenhuma tinta selecionada!")
             return
@@ -138,13 +148,6 @@ class PaintMixingGame:
         # Criar frames para organizar a interface
         main_frame = tk.Frame(self.master)
         main_frame.pack(fill='both', expand=True)
-
-        # Frames laterais
-        left_frame = tk.Frame(main_frame)
-        left_frame.pack(side='left', fill='both', expand=True)
-
-        right_frame = tk.Frame(main_frame)
-        right_frame.pack(side='right', fill='both', expand=True)
 
         # Frame superior para as tintas
         paints_frame = tk.Frame(main_frame)
@@ -166,11 +169,27 @@ class PaintMixingGame:
 
             # Controle de quantidade de tinta para cada cor
             quantity_var = tk.DoubleVar(value=0.0)
-            quantity_scale = tk.Scale(paint_frame, from_=0.0, to=1.0, resolution=0.05, orient='horizontal', variable=quantity_var)
+            quantity_scale = tk.Scale(
+                paint_frame, from_=0.0, to=1.0, resolution=0.05, orient='horizontal', variable=quantity_var
+            )
             quantity_scale.pack()
 
-            add_button = tk.Button(paint_frame, text="+", command=lambda p=paint, q=quantity_var: self.add_to_mistura(p, q.get()))
+            add_button = tk.Button(
+                paint_frame, text="+", command=lambda p=paint, q=quantity_var: self.add_to_mistura(p, q.get())
+            )
             add_button.pack()
+
+        # Frame para as cores lado a lado
+        colors_frame = tk.Frame(main_frame)
+        colors_frame.pack(side='top', fill='both', expand=True)
+
+        # Frame esquerdo para a mistura atual
+        left_frame = tk.Frame(colors_frame)
+        left_frame.pack(side='left', fill='both', expand=True, padx=20, pady=20)
+
+        # Frame direito para a cor extraída e imagem
+        right_frame = tk.Frame(colors_frame)
+        right_frame.pack(side='left', fill='both', expand=True, padx=20, pady=20)
 
         # Área para exibir a mistura atual
         mistura_label = tk.Label(left_frame, text="Mistura Atual:", font=("Helvetica", 14))
@@ -179,9 +198,25 @@ class PaintMixingGame:
         self.mistura_image_label = tk.Label(left_frame)
         self.mistura_image_label.pack()
 
-        # Botão de "Refresh" para resetar a mistura
-        refresh_button = tk.Button(left_frame, text="Resetar Mistura", command=self.reset_mistura, font=("Helvetica", 12))
+        # Botão de "Resetar" para resetar a mistura
+        refresh_button = tk.Button(
+            left_frame, text="Resetar Mistura", command=self.reset_mistura, font=("Helvetica", 12)
+        )
         refresh_button.pack(pady=10)
+
+        # Área para exibir informações da mistura
+        self.info_label = tk.Label(left_frame, text="", font=("Helvetica", 12))
+        self.info_label.pack(pady=10)
+
+        # Botão "Check" para comparar a mistura atual com a cor extraída
+        self.check_button = tk.Button(
+            left_frame, text="Check", command=self.check_similarity, font=("Helvetica", 12)
+        )
+        self.check_button.pack(pady=10)
+
+        # Label para exibir o resultado do "Check"
+        self.check_result_label = tk.Label(left_frame, text="", font=("Helvetica", 12))
+        self.check_result_label.pack(pady=10)
 
         # Área para exibir a cor extraída
         extracted_label = tk.Label(right_frame, text="Cor Extraída:", font=("Helvetica", 14))
@@ -191,25 +226,34 @@ class PaintMixingGame:
         self.extracted_color_label.pack()
 
         # Botão para fazer upload de imagem
-        upload_button = tk.Button(right_frame, text="Upload de Imagem", command=self.upload_image, font=("Helvetica", 12))
+        upload_button = tk.Button(
+            right_frame, text="Upload de Imagem", command=self.upload_image, font=("Helvetica", 12)
+        )
         upload_button.pack(pady=10)
 
         # Área para exibir a imagem
         self.image_label = tk.Label(right_frame)
         self.image_label.pack()
 
-        # Área para exibir informações da mistura
-        self.info_label = tk.Label(left_frame, text="", font=("Helvetica", 12))
-        self.info_label.pack(pady=10)
+        # Botão "Revelar Mistura"
+        self.reveal_mixture_button = tk.Button(
+            right_frame, text="Revelar Mistura", command=self.reveal_mixture, font=("Helvetica", 12)
+        )
+        self.reveal_mixture_button.pack(pady=10)
+
+        # Label para exibir as porcentagens da mistura revelada
+        self.reveal_info_label = tk.Label(right_frame, text="", font=("Helvetica", 12))
+        self.reveal_info_label.pack(pady=10)
 
         # Botão para voltar à seleção de tintas
-        self.back_button = tk.Button(self.master, text="Voltar", command=self.create_selection_interface)
+        self.back_button = tk.Button(self.master, text="Voltar", command=self.restart_program)
         self.back_button.pack(side='bottom', pady=10)
 
     def reset_mistura(self):
         self.mistura = []
         self.mistura_image_label.config(image='')  # Resetar a imagem da mistura
         self.info_label.config(text="Mistura resetada.")
+        self.check_result_label.config(text="")  # Limpar resultado do check
 
     def add_to_mistura(self, paint, intensity):
         if intensity <= 0:
@@ -223,8 +267,14 @@ class PaintMixingGame:
         # Atualizar informações da mistura
         mixture_info = ""
         total_intensity = sum([qty for _, qty in self.mistura])
-        for sd, qty in self.mistura:
-            paint_name = [name for name, s in self.selected_paints.items() if s == sd][0]
+        mistura_resumo = {}
+        for sd_item, qty in self.mistura:
+            paint_name = [name for name, s in self.selected_paints.items() if s == sd_item][0]
+            if paint_name in mistura_resumo:
+                mistura_resumo[paint_name] += qty
+            else:
+                mistura_resumo[paint_name] = qty
+        for paint_name, qty in mistura_resumo.items():
             percentage = (qty / total_intensity) * 100
             mixture_info += f"{percentage:.1f}% {paint_name}\n"
         self.info_label.config(text=mixture_info)
@@ -281,8 +331,148 @@ class PaintMixingGame:
         # Converter valores para inteiros
         rgb = tuple(int(c) for c in rgb)
 
+        # Armazenar a cor extraída
+        self.extracted_rgb = rgb
+
         # Exibir a cor extraída com a textura
         self.apply_color_to_texture(rgb, self.extracted_color_label)
+
+    def check_similarity(self):
+        if not hasattr(self, 'extracted_rgb'):
+            messagebox.showwarning("Aviso", "Por favor, extraia uma cor da imagem primeiro.")
+            return
+
+        if not self.mistura:
+            messagebox.showwarning("Aviso", "Sua mistura está vazia. Adicione tintas para verificar.")
+            return
+
+        # Calcular a diferença entre a mistura atual e a cor extraída
+        mistura_sd = self.calculate_mistura_spectral()
+        mistura_xyz = sd_to_XYZ(mistura_sd) / 100
+        mistura_lab = XYZ_to_Lab(mistura_xyz)
+
+        target_rgb = np.array(self.extracted_rgb) / 255.0
+        target_xyz = sRGB_to_XYZ(target_rgb)
+        target_lab = XYZ_to_Lab(target_xyz)
+
+        delta_e = delta_E_CIE1976(mistura_lab, target_lab)
+
+        # Calcular o percentual de similaridade (quanto menor o delta E, maior a similaridade)
+        similarity_percentage = max(0, 100 - delta_e)
+
+        result_text = f"Similaridade: {similarity_percentage:.1f}%\n"
+
+        if similarity_percentage >= 90:
+            result_text += "Excelente! Sua mistura está muito próxima."
+        elif similarity_percentage >= 70:
+            result_text += "Bom trabalho! Ajustes menores podem melhorar."
+        else:
+            result_text += "Considere ajustar as proporções ou adicionar outras tintas."
+
+        self.check_result_label.config(text=result_text)
+
+    def reveal_mixture(self):
+        if not hasattr(self, 'extracted_rgb'):
+            messagebox.showwarning("Aviso", "Por favor, extraia uma cor da imagem primeiro.")
+            return
+
+        target_rgb = np.array(self.extracted_rgb) / 255.0  # Normalize to 0-1
+        target_xyz = sRGB_to_XYZ(target_rgb)
+        target_lab = XYZ_to_Lab(target_xyz)
+
+        sds = list(self.selected_paints.values())
+        num_paints = len(sds)
+        initial_weights = np.ones(num_paints) / num_paints
+
+        bounds = [(0, 1) for _ in range(num_paints)]
+
+        # Constraint: weights sum to 1
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+
+        def objective_function(weights):
+            weights = np.array(weights)
+            if np.sum(weights) == 0:
+                return np.inf
+            weights = weights / np.sum(weights)
+            mistura_sd = self.calculate_mixture_sd(weights, sds)
+            mixture_xyz = sd_to_XYZ(mistura_sd) / 100
+            mixture_lab = XYZ_to_Lab(mixture_xyz)
+            delta_e = delta_E_CIE1976(mixture_lab, target_lab)
+            return delta_e
+
+        result = minimize(objective_function, initial_weights, bounds=bounds, constraints=constraints)
+        if result.success and result.fun < 2.0:  # Limiar para Delta E aceitável
+            optimal_weights = result.x
+            optimal_weights = optimal_weights / np.sum(optimal_weights)
+            # Exibir as porcentagens de cada tinta
+            paint_names = list(self.selected_paints.keys())
+            mixture_info = ""
+            for i, weight in enumerate(optimal_weights):
+                if weight > 0.01:  # Exibir apenas tintas com peso significativo
+                    percentage = weight * 100
+                    mixture_info += f"{percentage:.1f}% {paint_names[i]}\n"
+            # Exibir a informação abaixo do botão
+            self.reveal_info_label.config(text=mixture_info)
+        else:
+            # Se não for possível com as tintas selecionadas
+            self.reveal_info_label.config(text="Não é possível criar esse tom com as tintas selecionadas.")
+            self.suggest_additional_paints(target_rgb)
+
+    def calculate_mixture_sd(self, weights, sds):
+        epsilon = 1e-6
+        absorbances = []
+        for sd in sds:
+            absorbance = -np.log10(sd.values + epsilon)
+            absorbances.append(absorbance)
+        weights = np.array(weights)
+        weights /= np.sum(weights)
+        avg_absorbance = np.average(absorbances, axis=0, weights=weights)
+        mixture_reflectance = 10 ** (-avg_absorbance)
+        mistura_sd = SpectralDistribution(mixture_reflectance, sds[0].domain)
+        return mistura_sd
+
+    def suggest_additional_paints(self, target_rgb):
+        # Tentar encontrar uma combinação com todas as tintas disponíveis
+        all_sds = list(self.available_paints_spectral.values())
+        all_paint_names = list(self.available_paints_spectral.keys())
+        num_paints = len(all_sds)
+        initial_weights = np.ones(num_paints) / num_paints
+
+        bounds = [(0, 1) for _ in range(num_paints)]
+
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+
+        target_xyz = sRGB_to_XYZ(target_rgb)
+        target_lab = XYZ_to_Lab(target_xyz)
+
+        def objective_function(weights):
+            weights = np.array(weights)
+            if np.sum(weights) == 0:
+                return np.inf
+            weights = weights / np.sum(weights)
+            mistura_sd = self.calculate_mixture_sd(weights, all_sds)
+            mixture_xyz = sd_to_XYZ(mistura_sd) / 100
+            mixture_lab = XYZ_to_Lab(mixture_xyz)
+            delta_e = delta_E_CIE1976(mixture_lab, target_lab)
+            return delta_e
+
+        result = minimize(objective_function, initial_weights, bounds=bounds, constraints=constraints)
+        if result.success and result.fun < 2.0:
+            optimal_weights = result.x
+            optimal_weights = optimal_weights / np.sum(optimal_weights)
+            # Encontrar as tintas que não estavam selecionadas
+            missing_paints = []
+            for i, weight in enumerate(optimal_weights):
+                if weight > 0.01 and all_paint_names[i] not in self.selected_paints:
+                    missing_paints.append(all_paint_names[i])
+            if missing_paints:
+                missing_paints_str = ', '.join(missing_paints)
+                message = "Não é possível criar esse tom com suas tintas. Tente acrescentar:\n" + missing_paints_str
+            else:
+                message = "Mesmo com todas as tintas, não foi possível alcançar o tom."
+            messagebox.showinfo("Sugestão de Tintas", message)
+        else:
+            messagebox.showinfo("Sugestão de Tintas", "Não foi possível encontrar uma combinação de tintas para o tom desejado.")
 
     def calculate_mistura_spectral(self):
         if not self.mistura:
@@ -300,9 +490,9 @@ class PaintMixingGame:
         weights /= np.sum(weights)
 
         avg_absorbance = np.average(absorbances, axis=0, weights=weights)
-        mistura_reflectance = 10 ** (-avg_absorbance)
+        mixture_reflectance = 10 ** (-avg_absorbance)
 
-        mistura_sd = SpectralDistribution(mistura_reflectance, self.mistura[0][0].domain)
+        mistura_sd = SpectralDistribution(mixture_reflectance, self.mistura[0][0].domain)
         return mistura_sd
 
     def sd_to_rgb(self, sd):
@@ -341,11 +531,18 @@ class PaintMixingGame:
         return ImageTk.PhotoImage(colored_texture)
 
     def clear_window(self):
-        for widget in self.master.winfo_children():
-            widget.destroy()
-        if self.bg_image_label:
+        if self.master and self.master.winfo_exists():
+            for widget in self.master.winfo_children():
+                widget.destroy()
+        if hasattr(self, 'bg_image_label') and self.bg_image_label:
             self.bg_image_label.destroy()
             self.bg_image_label = None
+
+    def restart_program(self):
+        self.master.destroy()
+        root = tk.Tk()
+        game = PaintMixingGame(root)
+        game.start()
 
     def start(self):
         self.master.mainloop()
