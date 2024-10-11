@@ -10,6 +10,19 @@ class PaintMixingGame:
         self.master = master
         master.title("Jogo de Mistura de Tintas a Óleo")
 
+        # Carregar a textura de tinta padrão
+        texture_path = r"E:\PythonCodes\Projetos\ScriptForOilPainters\texture_oil\pngtree-textured-background-with-brush-stroke-of-gray-oil-paint-image_13659816.png"
+        try:
+            if not os.path.exists(texture_path):
+                raise FileNotFoundError("A imagem de textura não foi encontrada no caminho especificado.")
+            self.texture_image = Image.open(texture_path).convert('RGBA')
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao carregar a imagem de textura:\n{e}")
+            self.texture_image = None  # Defina como None ou uma imagem padrão
+
+        self.texture_photo = None  # Para manter a referência da imagem
+        self.saved_tones = []  # Armazena os tons criados
+
         # Dados espectrais aproximados para as tintas
         self.available_paints_spectral = {
             'Amarelo Ocre': self.create_spectral_distribution('Amarelo Ocre'),
@@ -35,30 +48,15 @@ class PaintMixingGame:
         }
 
         self.selected_paints = {}
-        self.mistura = []  # Agora armazenará tuplas (sd, intensidade)
+        self.mistura = []  # Armazena tuplas (sd, quantidade)
 
         self.background_color = None
         self.background_image = None
         self.bg_image_label = None
 
-        # Carregar a textura de tinta padrão
-        texture_path = r"E:\PythonCodes\Projetos\texture_oil\pngtree-textured-background-with-brush-stroke-of-gray-oil-paint-image_13659816.png"
-        try:
-            if not os.path.exists(texture_path):
-                raise FileNotFoundError("A imagem de textura não foi encontrada no caminho especificado.")
-            self.texture_image = Image.open(texture_path).convert('RGBA')
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao carregar a imagem de textura:\n{e}")
-            self.texture_image = None  # Defina como None ou uma imagem padrão
-
-        self.texture_photo = None  # Para manter a referência da imagem
-
         self.create_selection_interface()
 
     def create_spectral_distribution(self, paint_name):
-        # Cria uma distribuição espectral genérica para a tinta
-        # Esta é uma simplificação; para precisão, dados espectrais reais são necessários
-
         wavelengths = np.arange(380, 781, 5)
 
         if paint_name == 'Amarelo Ocre':
@@ -74,15 +72,15 @@ class PaintMixingGame:
         elif paint_name == 'Verde Viridian':
             values = np.exp(-0.001 * (wavelengths - 530) ** 2)
         elif paint_name == 'Siena Queimada':
-            values = np.exp(-0.001 * (wavelengths - 600) ** 2) * 0.6
+            values = np.exp(-0.001 * (wavelengths - 600) ** 2) * 0.8  # Ajustando para mais visibilidade
         elif paint_name == 'Alizarin Crimson':
             values = np.exp(-0.001 * (wavelengths - 640) ** 2)
         elif paint_name == 'Amarelo Limão':
             values = np.exp(-0.001 * (wavelengths - 570) ** 2)
         elif paint_name == 'Siena Natural':
-            values = np.exp(-0.001 * (wavelengths - 580) ** 2) * 0.7
+            values = np.exp(-0.001 * (wavelengths - 580) ** 2) * 0.85  # Ajuste para visibilidade
         elif paint_name == 'Terra de Sombra Queimada':
-            values = np.exp(-0.001 * (wavelengths - 600) ** 2) * 0.4
+            values = np.exp(-0.001 * (wavelengths - 600) ** 2) * 0.75  # Ajuste para mais visibilidade
         elif paint_name == 'Azul Cobalto':
             values = np.exp(-0.001 * (wavelengths - 480) ** 2)
         elif paint_name == 'Azul Cerúleo':
@@ -90,7 +88,7 @@ class PaintMixingGame:
         elif paint_name == 'Amarelo Cádmio':
             values = np.exp(-0.001 * (wavelengths - 580) ** 2)
         elif paint_name == 'Cinza de Payne':
-            values = np.ones_like(wavelengths) * 0.5
+            values = np.ones_like(wavelengths) * 0.6  # Ajuste para maior contraste
         elif paint_name == 'Verde Ftalocianina':
             values = np.exp(-0.001 * (wavelengths - 520) ** 2)
         elif paint_name == 'Azul Ftalocianina':
@@ -102,14 +100,12 @@ class PaintMixingGame:
         elif paint_name == 'Vermelho Índio':
             values = np.exp(-0.001 * (wavelengths - 620) ** 2)
         else:
-            # Para outras tintas, usar uma distribuição neutra
             values = np.ones_like(wavelengths) * 0.5
 
         sd = SpectralDistribution(values, wavelengths)
         return sd
 
     def create_selection_interface(self):
-        # [O restante do método permanece o mesmo]
         self.clear_window()
 
         tk.Label(self.master, text="Selecione as tintas para sua paleta:").pack()
@@ -128,11 +124,9 @@ class PaintMixingGame:
         self.create_palette_button.pack()
 
     def add_new_paint(self):
-        # [O restante do método permanece o mesmo]
         messagebox.showinfo("Aviso", "A adição de novas tintas não é suportada nesta versão.")
 
     def create_palette(self):
-        # [O restante do método permanece o mesmo]
         self.selected_paints = {paint: sd for paint, var in self.paint_vars.items() if var.get() == 1 for sd in [self.available_paints_spectral[paint]]}
         if not self.selected_paints:
             messagebox.showwarning("Aviso", "Nenhuma tinta selecionada!")
@@ -143,42 +137,46 @@ class PaintMixingGame:
     def create_palette_interface(self):
         self.clear_window()
 
+        # Configurar a janela para tela cheia
+        self.master.attributes('-fullscreen', True)
+
         if self.background_color:
             self.master.config(bg=self.background_color)
-        elif self.background_image:
-            pass  # A imagem de fundo já está configurada
-        else:
-            self.master.config(bg='SystemButtonFace')
 
         palette_frame = tk.Frame(self.master)
         palette_frame.pack()
 
+        mistura_frame = tk.Frame(self.master)
+        mistura_frame.pack(pady=20)
+
+        # Mostrar os controles de quantidade para cada tinta adicionada
         for paint in self.selected_paints.keys():
             paint_frame = tk.Frame(palette_frame)
-            paint_frame.pack(side='left', padx=10)
+            paint_frame.pack(side='left', padx=20, pady=20)
 
-            # Obter a cor RGB da tinta
+            # Aumentar a área de visualização da tinta
             rgb = self.sd_to_rgb(self.selected_paints[paint])
-
-            # Aplicar a cor à textura
             paint_texture_photo = self.get_colored_texture(rgb)
 
             color_label = tk.Label(paint_frame, image=paint_texture_photo)
             color_label.pack()
 
-            # Manter referência para evitar garbage collection
             color_label.image = paint_texture_photo
 
-            # Modificar o botão "+" para chamar uma função que seleciona a intensidade
-            add_button = tk.Button(paint_frame, text="+", command=lambda p=paint: self.select_intensity_and_add(p))
-            add_button.pack()
+            # Exibir o nome da tinta
+            tk.Label(paint_frame, text=paint, font=("Helvetica", 16)).pack()
 
-        mistura_frame = tk.Frame(self.master)
-        mistura_frame.pack(pady=20)
+            # Controle de quantidade de tinta para cada cor
+            quantity_var = tk.DoubleVar(value=1.0)
+            tk.Label(paint_frame, text=f"Quantidade de {paint}:").pack()
+            quantity_scale = tk.Scale(paint_frame, from_=0.25, to=1.0, resolution=0.25, orient='horizontal', variable=quantity_var)
+            quantity_scale.pack()
+
+            add_button = tk.Button(paint_frame, text="+", command=lambda p=paint, q=quantity_var: self.add_to_mistura(p, q.get()))
+            add_button.pack()
 
         tk.Label(mistura_frame, text="Mistura Central:").pack()
 
-        # Inicializar o label da imagem da mistura
         self.mistura_image_label = tk.Label(mistura_frame)
         self.mistura_image_label.pack()
 
@@ -188,53 +186,76 @@ class PaintMixingGame:
         self.color_info_label = tk.Label(self.master, text="RGB: (255, 255, 255)")
         self.color_info_label.pack()
 
-        self.customize_bg_button = tk.Button(self.master, text="Personalizar Fundo", command=self.customize_background)
-        self.customize_bg_button.pack(pady=10)
+        # Botão de "Refresh" para resetar a mistura
+        refresh_button = tk.Button(self.master, text="Refresh", command=self.reset_mistura, font=("Helvetica", 14))
+        refresh_button.pack(pady=10)
 
-    def select_intensity_and_add(self, paint):
-        intensity_window = tk.Toplevel(self.master)
-        intensity_window.title("Selecione a Intensidade")
-        tk.Label(intensity_window, text=f"Selecione a intensidade para {paint}:").pack(pady=10)
+        # Botão "Salvar Tom" para salvar o tom criado
+        save_tone_button = tk.Button(self.master, text="Salvar Tom", command=self.save_tone, font=("Helvetica", 14))
+        save_tone_button.pack(pady=10)
 
-        # Variável para armazenar a intensidade selecionada
-        intensity_var = tk.DoubleVar(value=1.0)  # Valor padrão é 1.0 (100%)
+        # Área para exibir os tons salvos
+        self.saved_tones_frame = tk.Frame(self.master)
+        self.saved_tones_frame.pack(pady=10)
 
-        # Opções de intensidade
-        intensities = [1.0, 0.75, 0.5, 0.25]
-        intensity_labels = ['100%', '75%', '50%', '25%']
+    def reset_mistura(self):
+        self.mistura = []
+        self.mistura_image_label.config(image='')  # Resetar a imagem da mistura
+        self.color_info_label.config(text="RGB: (255, 255, 255)")  # Resetar o texto RGB
+        self.info_label.config(text="Mistura resetada.")
 
-        for val, label in zip(intensities, intensity_labels):
-            tk.Radiobutton(intensity_window, text=label, variable=intensity_var, value=val).pack(anchor='w')
+    def save_tone(self):
+        if not self.mistura:
+            messagebox.showwarning("Aviso", "Nenhuma mistura criada para salvar!")
+            return
 
-        # Botão para confirmar a seleção
-        confirm_button = tk.Button(intensity_window, text="Adicionar", command=lambda: self.confirm_add_paint(paint, intensity_var.get(), intensity_window))
-        confirm_button.pack(pady=10)
+        # Salvar o tom criado
+        mistura_sd = self.calculate_mistura_spectral()
+        rgb = self.sd_to_rgb(mistura_sd)
+        self.saved_tones.append(rgb)
 
-    def confirm_add_paint(self, paint, intensity, window):
-        # Fechar a janela de seleção de intensidade
-        window.destroy()
-        # Adicionar a tinta à mistura com a intensidade selecionada
-        self.add_to_mistura(paint, intensity)
+        # Exibir o tom salvo na interface
+        self.display_saved_tones()
 
-    def add_to_mistura(self, paint, intensity=1.0):
+    def display_saved_tones(self):
+        # Limpar os tons salvos anteriores
+        for widget in self.saved_tones_frame.winfo_children():
+            widget.destroy()
+
+        # Exibir cada tom salvo
+        for i, rgb in enumerate(self.saved_tones):
+            saved_color = Image.new('RGB', (50, 50), rgb)
+            saved_photo = ImageTk.PhotoImage(saved_color)
+            label = tk.Label(self.saved_tones_frame, image=saved_photo)
+            label.image = saved_photo
+            label.grid(row=0, column=i, padx=10)
+
+    def get_colored_texture(self, rgb):
+        if self.texture_image is None:
+            color_image = Image.new('RGB', (100, 100), rgb)
+            return ImageTk.PhotoImage(color_image)
+
+        grayscale_texture = self.texture_image.convert('L')
+        rgb_hex = '#%02x%02x%02x' % rgb
+        colored_texture = ImageOps.colorize(grayscale_texture, black="black", white=rgb_hex)
+        colored_texture = colored_texture.resize((100, 100), Image.LANCZOS)  # Aumentar o tamanho da textura
+        return ImageTk.PhotoImage(colored_texture)
+
+    def add_to_mistura(self, paint, intensity):
         sd = self.selected_paints[paint]
-        # Armazenar a tinta com a intensidade
         self.mistura.append((sd, intensity))
         mistura_sd = self.calculate_mistura_spectral()
         rgb = self.sd_to_rgb(mistura_sd)
         rgb_text = f"RGB: {rgb}"
-        self.info_label.config(text=f"Foi adicionada a tinta {paint} com intensidade {int(intensity * 100)}%")
+        self.info_label.config(text=f"Foi adicionada a tinta {paint} com quantidade {int(intensity * 100)}%")
         self.color_info_label.config(text=rgb_text)
 
-        # Aplicar a cor resultante à textura
         self.apply_color_to_texture(rgb)
 
     def calculate_mistura_spectral(self):
         if not self.mistura:
-            # Retornar branco se nenhuma tinta foi adicionada
             return SpectralDistribution(np.ones(81), np.arange(380, 781, 5))
 
-        # Converter reflectância em absorbância
         epsilon = 1e-6
         absorbances = []
         weights = []
@@ -243,80 +264,34 @@ class PaintMixingGame:
             absorbances.append(absorbance)
             weights.append(intensity)
 
-        # Converter pesos para numpy array
         weights = np.array(weights)
-        # Normalizar pesos
         weights /= np.sum(weights)
 
-        # Calcular a média ponderada das absorbâncias
         avg_absorbance = np.average(absorbances, axis=0, weights=weights)
-
-        # Converter absorbância média de volta para reflectância
         mistura_reflectance = 10 ** (-avg_absorbance)
 
         mistura_sd = SpectralDistribution(mistura_reflectance, self.mistura[0][0].domain)
         return mistura_sd
 
     def sd_to_rgb(self, sd):
-        # Converter distribuição espectral para XYZ
         xyz = sd_to_XYZ(sd)
-        # Converter XYZ para sRGB
         rgb = XYZ_to_sRGB(xyz / 100)
-        # Clampear valores e converter para 0-255
         rgb = np.clip(rgb, 0, 1) * 255
         return tuple(rgb.astype(int))
 
-    def sd_to_hex(self, sd):
-        rgb = self.sd_to_rgb(sd)
-        return '#%02x%02x%02x' % rgb
-
-    def get_colored_texture(self, rgb):
-        if self.texture_image is None:
-            # Retorna uma imagem sólida se a textura não estiver disponível
-            color_image = Image.new('RGB', (50, 50), rgb)
-            return ImageTk.PhotoImage(color_image)
-
-        # Converter a textura para escala de cinza
-        grayscale_texture = self.texture_image.convert('L')
-
-        # Converter o valor RGB para uma string hexadecimal
-        rgb_hex = '#%02x%02x%02x' % rgb
-
-        # Aplicar a cor à textura
-        colored_texture = ImageOps.colorize(grayscale_texture, black="black", white=rgb_hex)
-
-        # Redimensionar a imagem para caber no label
-        colored_texture = colored_texture.resize((50, 50), Image.LANCZOS)
-
-        # Converter para PhotoImage para exibição no Tkinter
-        texture_photo = ImageTk.PhotoImage(colored_texture)
-
-        return texture_photo
-
     def apply_color_to_texture(self, rgb):
         if self.texture_image is None:
-            # Se a textura não estiver disponível, mostrar uma cor sólida
             color_image = Image.new('RGB', (200, 200), rgb)
             self.texture_photo = ImageTk.PhotoImage(color_image)
         else:
-            # Converter a textura para escala de cinza
             grayscale_texture = self.texture_image.convert('L')
-
-            # Converter o valor RGB para uma string hexadecimal
             rgb_hex = '#%02x%02x%02x' % rgb
-
-            # Aplicar a cor à textura usando ImageOps.colorize
             colored_texture = ImageOps.colorize(grayscale_texture, black="black", white=rgb_hex)
-
-            # Redimensionar a imagem para o tamanho desejado
             colored_texture = colored_texture.resize((200, 200), Image.LANCZOS)
-
-            # Converter para PhotoImage para exibição no Tkinter
             self.texture_photo = ImageTk.PhotoImage(colored_texture)
 
-        # Atualizar o label da imagem da mistura
         self.mistura_image_label.config(image=self.texture_photo)
-        self.mistura_image_label.image = self.texture_photo  # Manter referência
+        self.mistura_image_label.image = self.texture_photo
 
     def clear_window(self):
         for widget in self.master.winfo_children():
